@@ -32,18 +32,26 @@ level=$(grep -hoE 'VERIFY_LEVEL=(tdd|build)' CLAUDE.md 2>/dev/null | head -1 | c
 level=${level:-tdd}
 
 # tdd mode: touching production source demands touching a test file too.
-# ponytail: path-pattern heuristic for "test file"; refine per-repo via VERIFY_LEVEL=build + a stricter verify.sh if it misclassifies.
+# rationale: path-pattern heuristic for "test file"; refine per-repo via VERIFY_LEVEL=build + a stricter verify.sh if it misclassifies.
 tpat='(^|/)(tests?|__tests__|spec)(/|$)|[._-](test|spec)s?\.|(^|/)test_'
 if [ "$level" = tdd ]; then
   tests=$(grep -iE "$tpat" <<<"$changed")
   src=$(grep -ivE "$tpat" <<<"$changed" \
         | grep -E '\.(m?[jt]sx?|py|rs|go|java|kt|rb|c|h|cpp|hpp|cs|swift|php|exs?)$')
   if [ -n "$src" ] && [ -z "$tests" ]; then
-    { echo "BLOCKED (VERIFY_LEVEL=tdd): production source changed but no test files did:"
-      sed 's/^/  - /' <<<"$src"
-      echo "Write a failing test first (tdd skill), or declare VERIFY_LEVEL=build in CLAUDE.md."
-    } >&2
-    exit 2
+    # Rust keeps unit tests inline in src files, invisible to the path check.
+    # Fallback: pass if the changed .rs diffs ADD test code — only + lines
+    # count; test code already sitting in the file is not new test work.
+    rs=$(grep '\.rs$' <<<"$src") && tests=$( { git diff HEAD -- $rs 2>/dev/null
+        [ -n "$base" ] && git diff "$base" HEAD -- $rs 2>/dev/null
+      } | grep -E '^\+[^+]' | grep -E '#\[test\]|#\[cfg\(test\)\]|mod tests' )
+    if [ -z "$tests" ]; then
+      { echo "BLOCKED (VERIFY_LEVEL=tdd): production source changed but no test files did:"
+        sed 's/^/  - /' <<<"$src"
+        echo "Write a failing test first (tdd skill), or declare VERIFY_LEVEL=build in CLAUDE.md."
+      } >&2
+      exit 2
+    fi
   fi
 fi
 
