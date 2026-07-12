@@ -5,4 +5,8 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
+# Must be safe in a fresh checkout: isolation:worktree agents start with no
+# deps installed. Uncomment (and adapt) the bootstrap for your ecosystem:
+# [ -d node_modules ] || npm ci --silent
+
 npm test --silent          # <- replace with this repo's real test/build command

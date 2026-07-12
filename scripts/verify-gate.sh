@@ -57,7 +57,19 @@ fi
 
 # Verify contract: the repo's scripts/verify.sh wins; else best-effort detection.
 if [ -f scripts/verify.sh ]; then cmd="bash scripts/verify.sh"
-elif [ -f package.json ] && grep -q '"test"[[:space:]]*:' package.json; then cmd="npm test --silent"
+elif [ -f package.json ] && grep -q '"test"[[:space:]]*:' package.json; then
+  cmd="npm test --silent"
+  # Worktree agents start from a clean checkout: no node_modules. Bootstrap
+  # first, and fail distinguishably — an install error is environment, not tests.
+  if [ ! -d node_modules ]; then
+    boot="npm install --silent"; [ -f package-lock.json ] && boot="npm ci --silent"
+    if ! out=$($boot 2>&1); then
+      { echo "BLOCKED: dependency install failed ($boot) — environment/manifest problem, NOT a test failure. Last lines:"
+        tail -20 <<<"$out"
+      } >&2
+      exit 2
+    fi
+  fi
 elif [ -f Cargo.toml ]; then cmd="cargo test --quiet"
 elif [ -f gradlew ]; then cmd="./gradlew build"
 else

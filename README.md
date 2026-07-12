@@ -49,6 +49,8 @@ Manual fallback (what setup automates):
    repo's real test command. Non-zero exit blocks subagents from finishing.
    (Without it the gate falls back to auto-detection — package.json test
    script, Cargo.toml, gradlew — and warns loudly if it finds nothing.)
+   It must be safe to run in a fresh checkout — worktree agents start with no
+   deps installed; see the bootstrap guard in the template.
 3. `docs/specs/` — created automatically by the first brainstorm.
 
 ## Overriding per repo
