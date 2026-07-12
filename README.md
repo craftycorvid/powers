@@ -22,6 +22,9 @@ them. Deliberately absent, and what covers it instead:
   code. Adapted from [obra/superpowers](https://github.com/obra/superpowers) (MIT).
 - **`tdd` skill** — failing test first, for features and bug fixes. The Iron
   Law: no production code without a failing test that demands it.
+- **`systematic-debugging` skill** — root cause before fixes: one hypothesis
+  at a time, no symptom patches, a three-strikes circuit breaker, then hand
+  off to the tdd bug flow.
 - **`implementer` agent** — one task per dispatch, test-first, in an isolated
   worktree, commits before finishing. Stops and reports on spec ambiguity.
 - **`code-reviewer` agent** — read-only (Read/Grep/Glob, haiku), reviews a

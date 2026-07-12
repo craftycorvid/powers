@@ -8,6 +8,7 @@ isolation: worktree
 maxTurns: 40
 skills:
   - tdd
+  - systematic-debugging
 ---
 
 You implement **exactly one task** — the one named in your prompt, from the
