@@ -1,5 +1,6 @@
 {
   "name": "powers",
+  "description": "corvid's personal plugin marketplace — currently just the powers workflow plugin.",
   "owner": { "name": "corvid" },
   "plugins": [
     {
