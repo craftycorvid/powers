@@ -4,17 +4,6 @@ A thin, personal Claude Code plugin for a disciplined dev workflow:
 **brainstorm → committed spec → test-first implementation in worktrees →
 adversarial review → hard verify gate.**
 
-The design rule: lean on Claude Code's native primitives instead of rebuilding
-them. Deliberately absent, and what covers it instead:
-
-| Not built | Native feature that covers it |
-|---|---|
-| Worktree management skill | `isolation: worktree` agent frontmatter |
-| Plan orchestrator / task sequencer | Plan Mode + subagent dispatch |
-| Session-start skill index hook | Skill auto-routing from descriptions |
-| Multi-harness compatibility layer | This runs in Claude Code, period |
-| Review-loop orchestration | One `code-reviewer` agent; native iteration |
-
 ## What's in the box
 
 - **`brainstorming` skill** — Socratic refinement of a rough idea into a spec
@@ -24,7 +13,7 @@ them. Deliberately absent, and what covers it instead:
   Law: no production code without a failing test that demands it.
 - **`systematic-debugging` skill** — root cause before fixes: one hypothesis
   at a time, no symptom patches, a three-strikes circuit breaker, then hand
-  off to the tdd bug flow.
+  off to the tdd bug flow. Adapted from [obra/superpowers](https://github.com/obra/superpowers) (MIT).
 - **`implementer` agent** — one task per dispatch, test-first, in an isolated
   worktree, commits before finishing. Stops and reports on spec ambiguity.
 - **`code-reviewer` agent** — read-only (Read/Grep/Glob, haiku), reviews a
@@ -40,7 +29,7 @@ them. Deliberately absent, and what covers it instead:
 The repo is its own marketplace:
 
 ```
-/plugin marketplace add corvid/powers        # or a local path to this repo
+/plugin marketplace add craftycorvid/powers
 /plugin install powers@powers
 ```
 
@@ -69,3 +58,16 @@ Manual fallback (what setup automates):
 - `CLAUDE.md` instructions beat skill guidance on conflict; it's the
   repo's constitution. `VERIFY_LEVEL=build` is the built-in relaxation.
 - Uninstall entirely: `/plugin uninstall powers@powers`.
+
+## How is this different from superpowers?
+
+The design rule: lean on Claude Code's native primitives instead of rebuilding
+them. Deliberately absent, and what covers it instead:
+
+| Not built                          | Native feature that covers it               |
+| ---------------------------------- | ------------------------------------------- |
+| Worktree management skill          | `isolation: worktree` agent frontmatter     |
+| Plan orchestrator / task sequencer | Plan Mode + subagent dispatch               |
+| Session-start skill index hook     | Skill auto-routing from descriptions        |
+| Multi-harness compatibility layer  | This runs in Claude Code, period            |
+| Review-loop orchestration          | One `code-reviewer` agent; native iteration |
