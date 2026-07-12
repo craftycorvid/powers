@@ -1,7 +1,7 @@
 {
   "name": "powers",
   "description": "Thin dev-workflow plugin: brainstorm-to-spec, TDD, spec-scoped subagents, and a verify gate — built on native Claude Code primitives.",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "author": { "name": "corvid", "email": "claude@corvid.boo" },
   "license": "MIT"
 }

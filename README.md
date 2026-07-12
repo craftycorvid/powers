@@ -29,6 +29,8 @@ them. Deliberately absent, and what covers it instead:
 - **verify gate** — a `SubagentStop` hook. Blocks a finishing subagent if it
   changed source without tests (`VERIFY_LEVEL=tdd`) or if the repo's verify
   command fails.
+- **`setup` skill** — `/powers:setup` rolls a repo out: detects test/build
+  commands, asks for `VERIFY_LEVEL`, generates CLAUDE.md + verify.sh, commits.
 
 ## Install
 
@@ -39,11 +41,18 @@ The repo is its own marketplace:
 /plugin install powers@powers
 ```
 
-## Per-repo rollout (3 files)
+## Per-repo rollout
+
+Run `/powers:setup` in the repo. It detects the project's test/build commands,
+asks which `VERIFY_LEVEL` you want (`tdd` strict / `build` relaxed), generates
+`CLAUDE.md` and `scripts/verify.sh` from the templates, runs verify.sh to
+prove it works, and commits both. It never overwrites existing files — on an
+already-configured repo it only offers what's missing.
+
+Manual fallback (what setup automates):
 
 1. `CLAUDE.md` — copy `templates/CLAUDE.md.template`, fill in invariants,
-   commands, pointers. Set `VERIFY_LEVEL=tdd` (strict, default) or `build`
-   (gate only requires the verify command to pass).
+   commands, pointers, and the `VERIFY_LEVEL=` line.
 2. `scripts/verify.sh` — copy `templates/verify.sh.template`, point it at the
    repo's real test command. Non-zero exit blocks subagents from finishing.
    (Without it the gate falls back to auto-detection — package.json test
