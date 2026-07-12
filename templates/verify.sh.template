@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+# scripts/verify.sh — the repo's verify contract. The powers verify-gate runs
+# this when a subagent finishes; non-zero exit blocks the subagent. Delegate
+# to whatever "the code is good" means here — keep it fast and deterministic.
+set -euo pipefail
+cd "$(dirname "$0")/.."
+
+npm test --silent          # <- replace with this repo's real test/build command

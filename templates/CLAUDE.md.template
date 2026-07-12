@@ -1,0 +1,30 @@
+# <project name>
+
+<!-- One sentence: what this repo is. Claude reads this file every session;
+     keep it short — every line here costs context in every conversation. -->
+
+VERIFY_LEVEL=tdd
+<!-- The powers verify-gate reads this line. `tdd` (default): subagents that
+     change source without changing tests are blocked. `build`: only the
+     verify command below must pass — use for repos where tests don't fit
+     (prototypes, infra glue, generated code). -->
+
+## Invariants
+
+<!-- Rules that must survive every change. Things Claude could plausibly get
+     wrong, not general good practice. Examples:
+     - All money amounts are integer cents; never floats.
+     - public/api.ts is generated — edit schema/api.yaml instead. -->
+
+## Commands
+
+<!-- The exact commands that work in THIS repo. -->
+- Test: `<npm test | cargo test | ...>`
+- Build: `<...>`
+- Verify (what the gate runs): `scripts/verify.sh`
+
+## Pointers
+
+<!-- Where things live, so Claude doesn't guess. Specs land in docs/specs/. -->
+- Entry point: `<src/main.ts>`
+- Specs: `docs/specs/`
