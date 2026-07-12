@@ -1,0 +1,11 @@
+{
+  "name": "powers",
+  "owner": { "name": "corvid" },
+  "plugins": [
+    {
+      "name": "powers",
+      "source": "./",
+      "description": "Thin dev-workflow plugin: brainstorm-to-spec, TDD, spec-scoped subagents, and a verify gate."
+    }
+  ]
+}
