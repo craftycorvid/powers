@@ -19,9 +19,18 @@ Turn an idea into a spec through dialogue, then commit the spec to git. The
 spec — not the conversation — is the contract implementation works against.
 
 <HARD-GATE>
-Do NOT write code, scaffold anything, or dispatch implementer agents until the
-spec is written, approved by the user, and committed. No project is "too
-simple" — a simple project just gets a short spec.
+Do NOT write production code, scaffold anything, or dispatch implementer
+agents until the spec file is written, the user has READ IT and explicitly
+approved it, and it is committed.
+
+Spec approval is its own stop point. Approval of a plan, a proposal, or a
+conversation that _mentions_ the spec is NOT approval of the spec — only an
+explicit yes to the finished spec file counts. If you are operating under an
+approved Plan-Mode plan that includes writing this spec: write the spec,
+present it, then END YOUR TURN and wait. The plan resumes only after the
+spec itself is approved.
+
+No project is "too simple" — a simple project just gets a short spec.
 </HARD-GATE>
 
 ## Process
