@@ -72,7 +72,8 @@ that contradict each other? A requirement readable two ways? Fix inline.
 
 Ask the user to review the spec file. When they approve, **commit it on the
 current branch** with message `spec: <slug>`. This commit must exist before
-any implementation starts.
+any implementation starts. (`/powers:approve` is the fast path: it counts as
+explicit approval and continues into commit + plan mode.)
 
 ## The Spec Is Versioned
 
