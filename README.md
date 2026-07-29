@@ -23,6 +23,12 @@ adversarial review → hard verify gate.**
   command fails.
 - **`setup` skill** — `/powers:setup` rolls a repo out: detects test/build
   commands, asks for `VERIFY_LEVEL`, generates CLAUDE.md + verify.sh, commits.
+- **`approve` shortcut** — `/powers:approve` after reviewing a brainstormed
+  spec: counts as explicit approval, commits the spec, enters plan mode.
+  User-invoked only.
+- **`ship` shortcut** — `/powers:ship` when the branch's work is done: opens
+  the PR, requests + waits for Copilot's review, fixes what's relevant, states
+  why the rest was skipped. User-invoked only.
 
 ## Install
 
