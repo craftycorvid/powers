@@ -6,6 +6,10 @@ adversarial review → hard verify gate.**
 
 ## What's in the box
 
+- **`design` skill** — Socratic refinement of a new-project idea into a
+  living design doc at `docs/DESIGN.md`: high-level architecture plus a
+  phased plan with per-phase status, committed (`design: <name>`) before any
+  code. Phases get brainstormed into specs when their turn comes.
 - **`brainstorming` skill** — Socratic refinement of a rough idea into a spec
   at `docs/specs/YYYY-MM-DD-<slug>.md`, committed (`spec: <slug>`) before any
   code. Adapted from [obra/superpowers](https://github.com/obra/superpowers) (MIT).
@@ -23,9 +27,9 @@ adversarial review → hard verify gate.**
   command fails.
 - **`setup` skill** — `/powers:setup` rolls a repo out: detects test/build
   commands, asks for `VERIFY_LEVEL`, generates CLAUDE.md + verify.sh, commits.
-- **`approve` shortcut** — `/powers:approve` after reviewing a brainstormed
-  spec: counts as explicit approval, commits the spec, enters plan mode.
-  User-invoked only.
+- **`approve` shortcut** — `/powers:approve` after reviewing a pending spec
+  or design doc: counts as explicit approval and commits it; a spec then
+  continues into plan mode. User-invoked only.
 - **`ship` shortcut** — `/powers:ship` when the branch's work is done: opens
   the PR, requests + waits for Copilot's review, fixes what's relevant, states
   why the rest was skipped. User-invoked only.
