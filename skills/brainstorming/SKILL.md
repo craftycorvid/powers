@@ -36,9 +36,11 @@ No project is "too simple" — a simple project just gets a short spec.
 ## Process
 
 **1. Understand the context.** Look at the project first: files, docs, recent
-commits. If the request spans multiple independent subsystems, say so before
-refining details — help decompose it, then brainstorm the first piece; each
-piece gets its own spec.
+commits. If `docs/DESIGN.md` exists, read it — the spec must fit its
+architecture and current phase, and a feature that conflicts with it means a
+design-doc edit (and commit), not a silent divergence. If the request spans
+multiple independent subsystems, say so before refining details — help
+decompose it, then brainstorm the first piece; each piece gets its own spec.
 
 **2. Ask questions — one at a time.** One question per message, never a
 batch. Prefer multiple choice when the options are enumerable. Focus on

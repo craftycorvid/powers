@@ -25,6 +25,7 @@ VERIFY_LEVEL=tdd
 
 ## Pointers
 
-<!-- Where things live, so Claude doesn't guess. Specs land in docs/specs/. -->
+<!-- Where things live, so Claude doesn't guess. Specs land in docs/specs/;
+     the project design doc (if the repo has one) is docs/DESIGN.md. -->
 - Entry point: `<src/main.ts>`
 - Specs: `docs/specs/`
