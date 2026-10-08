@@ -313,7 +313,8 @@ export default Plugin.define({
     // On a completed subagent, run scripts/verify-gate.sh against the
     // directory the child session worked in (its worktree, if it moved).
     // Exit 2 fails the parent's subagent call with the script's message —
-    // the parent model sees it and can redispatch. Everything else passes.
+    // the parent model sees the failure (verified live: it reads the message
+    // and can redispatch in the same conversation). Everything else passes.
     //
     // Foreground subagents are gated in execute.after (the result settles
     // there and throwing fails the parent's tool call). Background children
@@ -336,9 +337,14 @@ export default Plugin.define({
         if (!childID) return
 
         // Background launches settle at launch: the child hasn't worked yet,
-        // so there is nothing to gate here. Track it for idle-time gating.
+        // so there is nothing to gate here. Two shapes: launched with
+        // background:true (input flag), or a foreground call promoted to
+        // background mid-run (result status "running" — the tool call
+        // returns early while the child keeps working). Both are tracked for
+        // idle-time gating instead; gating now would inspect half-done work.
         const input = asObject((event as any).input)
-        if (input?.background === true) {
+        const resultStatus = result?.output?.status ?? result?.metadata?.status
+        if (input?.background === true || resultStatus === "running") {
           pendingBackground.add(childID)
           return
         }
