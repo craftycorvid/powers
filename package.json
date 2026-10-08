@@ -1,0 +1,11 @@
+{
+  "name": "powers",
+  "version": "0.6.0",
+  "type": "module",
+  "exports": {
+    ".": "./opencode-plugin/index.ts"
+  },
+  "dependencies": {
+    "@opencode/plugin": "2.0.25"
+  }
+}
