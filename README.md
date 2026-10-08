@@ -1,6 +1,7 @@
 # powers
 
-A thin, personal Claude Code plugin for a disciplined dev workflow:
+A thin, personal dev-workflow plugin for a disciplined dev workflow, running
+in both Claude Code and OpenCode:
 **brainstorm → committed spec → test-first implementation in worktrees →
 adversarial review → hard verify gate.**
 
@@ -22,11 +23,12 @@ adversarial review → hard verify gate.**
   worktree, commits before finishing. Stops and reports on spec ambiguity.
 - **`code-reviewer` agent** — read-only (Read/Grep/Glob, haiku), reviews a
   diff against its spec for correctness, scope creep, and missing tests.
-- **verify gate** — a `SubagentStop` hook. Blocks a finishing subagent if it
-  changed source without tests (`VERIFY_LEVEL=tdd`) or if the repo's verify
-  command fails.
+- **verify gate** — a `SubagentStop` hook (Claude Code) / subagent-completion
+  hook (OpenCode). Blocks a finishing subagent if it changed source without
+  tests (`VERIFY_LEVEL=tdd`) or if the repo's verify command fails.
 - **`setup` skill** — `/powers:setup` rolls a repo out: detects test/build
-  commands, asks for `VERIFY_LEVEL`, generates CLAUDE.md + verify.sh, commits.
+  commands, asks for `VERIFY_LEVEL`, generates AGENTS.md and/or CLAUDE.md plus
+  verify.sh, commits.
 - **`approve` shortcut** — `/powers:approve` after reviewing a pending spec
   or design doc: counts as explicit approval and commits it; a spec then
   continues into plan mode. User-invoked only.
@@ -36,6 +38,8 @@ adversarial review → hard verify gate.**
 
 ## Install
 
+### Claude Code
+
 The repo is its own marketplace:
 
 ```
@@ -43,18 +47,34 @@ The repo is its own marketplace:
 /plugin install powers@powers
 ```
 
+### OpenCode
+
+Add the plugin:
+
+```
+opencode plugin add github:craftycorvid/powers
+```
+
+The plugin registers the skills, the `/powers/approve` and `/powers/ship`
+commands, and the verify gate from this repo's `skills/` and `scripts/`. The
+`implementer` and `code-reviewer` agents are installed as global files by
+`/powers:setup`, because OpenCode plugins cannot register agents themselves.
+
 ## Per-repo rollout
 
 Run `/powers:setup` in the repo. It detects the project's test/build commands,
 asks which `VERIFY_LEVEL` you want (`tdd` strict / `build` relaxed), generates
-`CLAUDE.md` and `scripts/verify.sh` from the templates, runs verify.sh to
-prove it works, and commits both. It never overwrites existing files — on an
-already-configured repo it only offers what's missing.
+`CLAUDE.md` (Claude Code) and/or `AGENTS.md` (OpenCode) and `scripts/verify.sh`
+from the templates, runs verify.sh to prove it works, and commits them. If both
+harnesses are in use it writes both instruction files with identical content.
+It never overwrites existing files — on an already-configured repo it only
+offers what's missing.
 
 Manual fallback (what setup automates):
 
-1. `CLAUDE.md` — copy `templates/CLAUDE.md.template`, fill in invariants,
-   commands, pointers, and the `VERIFY_LEVEL=` line.
+1. `CLAUDE.md` / `AGENTS.md` — copy the matching template from `templates/`,
+   fill in invariants, commands, pointers, and the `VERIFY_LEVEL=` line.
+   Claude Code reads `CLAUDE.md`; OpenCode reads `AGENTS.md`.
 2. `scripts/verify.sh` — copy `templates/verify.sh.template`, point it at the
    repo's real test command. Non-zero exit blocks subagents from finishing.
    (Without it the gate falls back to auto-detection — package.json test
@@ -71,6 +91,21 @@ Manual fallback (what setup automates):
   repo's constitution. `VERIFY_LEVEL=build` is the built-in relaxation.
 - Uninstall entirely: `/plugin uninstall powers@powers`.
 
+## OpenCode differences
+
+Same skills, same discipline, different harness plumbing:
+
+- The verify gate runs as a plugin hook on **subagent completion** rather than
+  Claude Code's `SubagentStop`, with the same `BLOCKED` semantics — a failing
+  gate fails the parent's subagent call and the model can redispatch.
+- Skills and commands are registered by the plugin directly from the same
+  `skills/*/SKILL.md` files; nothing is duplicated.
+- Commands are `/powers/approve` and `/powers/ship` (slash, not colon).
+- Agents install to `~/.config/opencode/agents/` via `/powers:setup`, since
+  plugins cannot register agents.
+- The `implementer` manages its own git worktree and moves its session into it
+  (`session_move`), rather than relying on harness-level worktree isolation.
+
 ## How is this different from superpowers?
 
 The design rule: lean on Claude Code's native primitives instead of rebuilding
@@ -81,5 +116,5 @@ them. Deliberately absent, and what covers it instead:
 | Worktree management skill          | `isolation: worktree` agent frontmatter     |
 | Plan orchestrator / task sequencer | Plan Mode + subagent dispatch               |
 | Session-start skill index hook     | Skill auto-routing from descriptions        |
-| Multi-harness compatibility layer  | This runs in Claude Code, period            |
+| Multi-harness compatibility layer  | Native plugin for both Claude Code and OpenCode |
 | Review-loop orchestration          | One `code-reviewer` agent; native iteration |
