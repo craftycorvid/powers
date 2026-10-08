@@ -5,7 +5,7 @@ description: >-
   scripts/verify.sh from the plugin templates, detecting what's detectable and
   asking about the rest. Use when the user asks to set up / initialize powers
   in a repo. NOT for general project scaffolding.
-allowed-tools: Read, Write, Bash(git *), Bash(chmod *)
+allowed-tools: Read, Write, Bash(git *), Bash(chmod *), Bash(cp *), Bash(mkdir *), Bash(command -v *)
 ---
 
 # Set Up a Repo for powers

@@ -49,7 +49,7 @@ if [ "$level" = tdd ]; then
     if [ -z "$tests" ]; then
       { echo "BLOCKED (VERIFY_LEVEL=tdd): production source changed but no test files did:"
         sed 's/^/  - /' <<<"$src"
-        echo "Write a failing test first (tdd skill), or declare VERIFY_LEVEL=build in CLAUDE.md."
+        echo "Write a failing test first (tdd skill), or declare VERIFY_LEVEL=build in CLAUDE.md/AGENTS.md."
       } >&2
       exit 2
     fi

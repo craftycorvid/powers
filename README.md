@@ -1,7 +1,7 @@
 # powers
 
-A thin, personal dev-workflow plugin for a disciplined dev workflow, running
-in both Claude Code and OpenCode:
+A thin, personal plugin for a disciplined dev workflow, running in both
+Claude Code and OpenCode:
 **brainstorm → committed spec → test-first implementation in worktrees →
 adversarial review → hard verify gate.**
 
