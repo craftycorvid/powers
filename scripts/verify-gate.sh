@@ -27,8 +27,9 @@ changed=$( { git diff --name-only HEAD 2>/dev/null
 [ -z "$changed" ] && exit 0
 
 # Convention: VERIFY_LEVEL is declared as a `VERIFY_LEVEL=tdd|build` line in
-# the repo's CLAUDE.md. Missing declaration means the strict default: tdd.
-level=$(grep -hoE 'VERIFY_LEVEL=(tdd|build)' CLAUDE.md 2>/dev/null | head -1 | cut -d= -f2)
+# the repo's CLAUDE.md (Claude Code) or AGENTS.md (OpenCode). Missing
+# declaration means the strict default: tdd.
+level=$(grep -hoE 'VERIFY_LEVEL=(tdd|build)' CLAUDE.md AGENTS.md 2>/dev/null | head -1 | cut -d= -f2)
 level=${level:-tdd}
 
 # tdd mode: touching production source demands touching a test file too.
