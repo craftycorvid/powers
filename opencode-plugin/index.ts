@@ -380,6 +380,15 @@ The skill says a spec approval enters plan mode. In this harness you do that by 
       return block
     }
 
+    /** Tell the parent a background child was blocked. Queues if the parent
+     * is busy; wakes it if idle. Single source for the message so the two
+     * delivery paths can't drift apart. */
+    const notifyBlocked = async (parentID: string, childID: string, block: string) =>
+      ctx.session.synthetic({
+        sessionID: parentID,
+        text: `Background subagent ${childID} was BLOCKED by the powers verify gate:\n\n${block}\n\nRedispatch it with instructions to fix the above (test-first per the tdd skill), or relax with VERIFY_LEVEL=build in AGENTS.md/CLAUDE.md.`,
+      })
+
     await ctx.tool.hook("execute.after", async (event) => {
       if (event.tool !== "subagent") return
       // Errored subagents surface their real error; don't mask it.
@@ -402,6 +411,20 @@ The skill says a spec approval enters plan mode. In this harness you do that by 
         const resultStatus = result?.output?.status ?? result?.metadata?.status
         if (input?.background === true || resultStatus === "running") {
           backgroundLaunched.add(childID)
+          // Race: a very fast child can go idle — and be gated by the idle
+          // listener — BEFORE this launch call settles. The listener skips
+          // its notification because backgroundLaunched didn't contain the
+          // child yet; deliver any already-cached blocking verdict here so
+          // the parent still learns. Clear the verdict so a re-fired idle
+          // can't double-deliver.
+          if (verdicts.has(childID)) {
+            const raced = verdicts.get(childID) as string | null
+            verdicts.delete(childID)
+            if (raced) {
+              const child = (await ctx.session.get({ sessionID: childID }).catch(() => undefined)) as any
+              if (child?.parentID) await notifyBlocked(child.parentID, childID, raced)
+            }
+          }
           return
         }
 
@@ -451,11 +474,11 @@ The skill says a spec approval enters plan mode. In this harness you do that by 
           // the verdict by failing the parent's tool call. Background
           // children have no pending tool call; the parent may already be
           // idle, so wake it with a synthetic message (queues if busy).
+          // (When this listener runs BEFORE the launch call's execute.after
+          // — fast child — backgroundLaunched can't contain the child yet;
+          // execute.after delivers the raced verdict itself.)
           if (block && backgroundLaunched.has(sessionID)) {
-            await ctx.session.synthetic({
-              sessionID: parentID,
-              text: `Background subagent ${sessionID} was BLOCKED by the powers verify gate:\n\n${block}\n\nRedispatch it with instructions to fix the above (test-first per the tdd skill), or relax with VERIFY_LEVEL=build in AGENTS.md/CLAUDE.md.`,
-            })
+            await notifyBlocked(parentID, sessionID, block)
           }
         } catch (err) {
           console.error("[powers] idle gate error (allowing):", err)
