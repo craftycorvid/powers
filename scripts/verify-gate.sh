@@ -28,9 +28,23 @@ changed=$( { git diff --name-only HEAD 2>/dev/null
 
 # Convention: VERIFY_LEVEL is declared as a `VERIFY_LEVEL=tdd|build` line in
 # the repo's CLAUDE.md (Claude Code) or AGENTS.md (OpenCode). Missing
-# declaration means the strict default: tdd.
-level=$(grep -hoE 'VERIFY_LEVEL=(tdd|build)' CLAUDE.md AGENTS.md 2>/dev/null | head -1 | cut -d= -f2)
-level=${level:-tdd}
+# declaration means the strict default: tdd. Conflicting declarations between
+# the two files are a misconfiguration — block rather than silently pick one.
+declare -a levels=()
+for f in CLAUDE.md AGENTS.md; do
+  v=$(grep -hoE 'VERIFY_LEVEL=(tdd|build)' "$f" 2>/dev/null | head -1 | cut -d= -f2)
+  [ -n "$v" ] && levels+=("$v")
+done
+if [ "${#levels[@]}" -gt 1 ]; then
+  uniq=$(printf '%s\n' "${levels[@]}" | sort -u)
+  if [ "$(printf '%s\n' "${levels[@]}" | sort -u | wc -l)" -gt 1 ]; then
+    { echo "BLOCKED: conflicting VERIFY_LEVEL declarations in CLAUDE.md and AGENTS.md (${levels[*]})."
+      echo "Both harnesses' instruction files must agree — set both to the same level and commit."
+    } >&2
+    exit 2
+  fi
+fi
+level=${levels[0]:-tdd}
 
 # tdd mode: touching production source demands touching a test file too.
 # rationale: path-pattern heuristic for "test file"; refine per-repo via VERIFY_LEVEL=build + a stricter verify.sh if it misclassifies.

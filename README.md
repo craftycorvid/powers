@@ -106,7 +106,9 @@ Same skills, same discipline, different harness plumbing:
 - Commands are `/powers/approve`, `/powers/ship`, and `/powers/setup`
   (slash, not colon).
 - Agents install to `~/.config/opencode/agents/` via `/powers/setup`, since
-  plugins cannot register agents.
+  plugins cannot register agents. The code-reviewer pins a small model
+  (`model:` in the agent file) for cheap reviews — edit or remove that line to
+  use another model or inherit the session's.
 - The `implementer` creates its own git worktree, moves its session into it
   (`session_move`), and stays there — the gate inspects the worktree on
   completion; the dispatcher merges and cleans up.

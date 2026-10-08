@@ -128,8 +128,12 @@ function loadSkills(root: string): LoadedSkill[] {
       autoinvoke: data["disable-model-invocation"] !== "true",
       path: skillPath,
       // The skills' prose uses Claude Code's plugin-root variable to point at
-      // repo templates/agents; swap in the real root for OpenCode.
-      content: body.split("${CLAUDE_PLUGIN_ROOT}").join(root),
+      // repo templates/agents, and Claude Code's `powers:` command namespace.
+      // Swap in the real root and the OpenCode `powers/` command namespace —
+      // the shared SKILL.md files stay Claude-Code-native.
+      content: body
+        .split("${CLAUDE_PLUGIN_ROOT}").join(root)
+        .split("/powers:approve").join("/powers/approve"),
     })
   }
   return skills.sort((a, b) => a.id.localeCompare(b.id))
@@ -156,8 +160,9 @@ function asObject(value: unknown): Record<string, any> {
 }
 
 /** Spawn the verify gate in `dir`, feed it cwd JSON, return combined output.
- * A hung verify command must not stump the parent's tool loop forever: race
- * the process against GATE_TIMEOUT, kill it, and fail open but loudly. */
+ * A hung verify command is a verification failure, not a harness error — the
+ * gate must block (Claude Code's hook runner times out the same way). Race the
+ * process against GATE_TIMEOUT, kill it, and return a blocking result. */
 const GATE_TIMEOUT_MS = 10 * 60 * 1000
 
 async function runVerifyGate(dir: string): Promise<{ code: number; output: string }> {
@@ -182,8 +187,10 @@ async function runVerifyGate(dir: string): Promise<{ code: number; output: strin
   const hung = await Promise.race([proc.exited.then(() => false), timedOut])
   if (timer) clearTimeout(timer)
   if (hung) {
-    console.error(`[powers] verify-gate.sh in ${dir} exceeded ${GATE_TIMEOUT_MS / 1000}s and was killed (allowing)`)
-    return { code: -1, output: "verify gate timed out" }
+    return {
+      code: 2,
+      output: `BLOCKED: verification did not finish within ${GATE_TIMEOUT_MS / 1000}s in ${dir} and was killed. A hung verify command is a failure — fix scripts/verify.sh (a stuck dev server, an interactive prompt, a watch-mode test runner) or the timeout is powers' opencode-plugin/index.ts GATE_TIMEOUT_MS.`,
+    }
   }
   const [stdout, stderr] = await Promise.all([stdoutPromise, stderrPromise])
   const output = [stdout, stderr].filter(Boolean).join("\n").trim()
@@ -251,27 +258,61 @@ export default Plugin.define({
     })
 
     // --- (b) Commands -----------------------------------------------------
-    // /powers/approve switches to the plan agent, then injects the approve
-    // skill body. /powers/ship just injects the ship skill body. Any text the
-    // user typed with the invocation is appended after the skill body — an
-    // invocation with attached changes is NOT approval (approve skill says so).
+    // /powers/approve, /powers/ship, /powers/setup inject their skill body as
+    // the prompt. Any text the user typed with the invocation is appended
+    // after the skill body — an invocation with attached changes is NOT
+    // approval (approve skill says so).
+    //
+    // approve deliberately does NOT switch to the plan agent up front: the
+    // skill's guard (nothing pending? attached edits? design doc vs spec?)
+    // must run first. Instead the approve body instructs the model to call
+    // the powers_approve_plan tool when — and only when — it has committed a
+    // spec and is about to plan. Design approvals and guard failures never
+    // call it, so the session keeps its agent.
     const inject = (body: string, userText: string | undefined) =>
       userText && userText.trim() ? `${body}\n\n${userText.trim()}` : body
 
     const approve = byId.get("approve")
     const ship = byId.get("ship")
     const setup = byId.get("setup")
+    await ctx.tool.transform((editor) => {
+      editor.namespace({
+        name: "powers",
+        description: "powers workflow tools",
+      })
+      editor.add({
+        name: "approve_plan",
+        description:
+          "Enter plan mode after a spec approval. Call this ONLY after the approve skill's guard passed and the spec is committed; it switches the current session to the plan agent.",
+        input: {
+          type: "object",
+          properties: {},
+          additionalProperties: false,
+        },
+        options: { namespace: "powers" },
+        execute: async (_input, context) => {
+          await ctx.session.switchAgent({ sessionID: context.sessionID, agent: "plan" })
+          return { content: "Session switched to the plan agent. Continue with planning the implementation against the committed spec." }
+        },
+      })
+    })
     await ctx.command.transform((editor) => {
       if (approve) {
+        // The "Spec → enter plan mode" handoff is a tool call, not an eager
+        // agent switch: the guard and the commit must happen first.
+        const approveBody = `${approve.content}
+
+## OpenCode plan handoff
+
+The skill says a spec approval enters plan mode. In this harness you do that by calling the \`powers_approve_plan\` tool — but ONLY after the guard passed and the spec is committed. Do NOT call it for design approvals (stop instead) or when the guard failed.`
         editor.add({
           name: "powers/approve",
           description: approve.description || undefined,
           execute: async ({ sessionID, prompt, delivery }) => {
-            await ctx.session.switchAgent({ sessionID, agent: "plan" })
             await ctx.session.prompt({
               ...prompt,
               sessionID,
-              text: inject(approve.content, prompt.text),
+              text: inject(approveBody, prompt.text),
               delivery,
             })
           },
@@ -316,13 +357,28 @@ export default Plugin.define({
     // the parent model sees the failure (verified live: it reads the message
     // and can redispatch in the same conversation). Everything else passes.
     //
-    // Foreground subagents are gated in execute.after (the result settles
-    // there and throwing fails the parent's tool call). Background children
-    // can't be gated that way — their launch call settles immediately — so
-    // they're tracked at launch and gated via session.status idle events,
-    // with the BLOCKED verdict delivered to the parent as a synthetic
-    // message (the parent is idle by then; the message re-activates it).
-    const pendingBackground = new Set<string>() // background: awaiting idle
+    // Two cooperating paths, because a child's session.status idle event
+    // fires BEFORE its foreground tool call settles:
+    //
+    //  - idle listener: gates any not-yet-gated idle child of a parent in
+    //    this location (works for foreground, background, and promoted
+    //    children alike), caching the verdict by session ID. Delivery: a
+    //    synthetic message to the parent ONLY for background children —
+    //    foreground verdicts are delivered by execute.after's throw.
+    //  - execute.after: foreground calls read the cached verdict (or gate
+    //    if the cache is somehow empty) and throw on a block, which fails
+    //    the parent's tool call.
+    //
+    // Verdicts are invalidated when a child goes busy again, so a continued
+    // child session (same ID, new turn of work) is re-gated per turn.
+    const verdicts = new Map<string, string | null>() // childID -> BLOCK message | null (passed)
+    const backgroundLaunched = new Set<string>() // children launched/promoted as background
+
+    const gateAndCache = async (childID: string): Promise<string | null> => {
+      const block = await gateSession(ctx, childID)
+      verdicts.set(childID, block)
+      return block
+    }
 
     await ctx.tool.hook("execute.after", async (event) => {
       if (event.tool !== "subagent") return
@@ -340,16 +396,20 @@ export default Plugin.define({
         // so there is nothing to gate here. Two shapes: launched with
         // background:true (input flag), or a foreground call promoted to
         // background mid-run (result status "running" — the tool call
-        // returns early while the child keeps working). Both are tracked for
-        // idle-time gating instead; gating now would inspect half-done work.
+        // returns early while the child keeps working). The idle listener
+        // gates both when the child actually finishes.
         const input = asObject((event as any).input)
         const resultStatus = result?.output?.status ?? result?.metadata?.status
         if (input?.background === true || resultStatus === "running") {
-          pendingBackground.add(childID)
+          backgroundLaunched.add(childID)
           return
         }
 
-        block = await gateSession(ctx, childID)
+        // Foreground: the idle listener usually gated the child already
+        // (idle fires before the tool call settles). Use that verdict.
+        block = verdicts.has(childID)
+          ? (verdicts.get(childID) as string | null)
+          : await gateAndCache(childID)
       } catch (err) {
         // Fail open on gate-harness bugs; real verification failures use
         // exit 2 and are handled above.
@@ -359,30 +419,46 @@ export default Plugin.define({
       if (block) throw new Error(block)
     })
 
-    // Background children: gate when the child goes idle, tell the parent.
     const controller = new AbortController()
     void (async () => {
       for await (const ev of ctx.event.subscribe({ signal: controller.signal })) {
         try {
-          if ((ev as any).type !== "session.status") continue
+          const type = (ev as any).type
           const data = (ev as any).data ?? {}
-          if (data.status?.type !== "idle") continue
-          const childID = data.sessionID
-          if (!childID || !pendingBackground.has(childID)) continue
-          pendingBackground.delete(childID)
+          const sessionID = data.sessionID
+          if (!sessionID) continue
 
-          const block = await gateSession(ctx, childID)
-          if (!block) continue
+          // A gated child going busy again invalidates its verdict — a
+          // continued child session (same ID, new work) must be re-gated.
+          if (type === "session.status" && data.status?.type === "busy") {
+            verdicts.delete(sessionID)
+            continue
+          }
+          if (type !== "session.status" || data.status?.type !== "idle") continue
+          if (verdicts.has(sessionID)) continue // already gated this turn
 
-          const child = (await ctx.session.get({ sessionID: childID }).catch(() => undefined)) as any
+          // Only gate subagent children of parents in this location —
+          // other locations have (or don't have) their own plugin instance,
+          // and primary sessions have no parentID.
+          const child = (await ctx.session.get({ sessionID }).catch(() => undefined)) as any
           const parentID = child?.parentID
           if (!parentID) continue
-          await ctx.session.synthetic({
-            sessionID: parentID,
-            text: `Background subagent ${childID} was BLOCKED by the powers verify gate:\n\n${block}\n\nRedispatch it with instructions to fix the above (test-first per the tdd skill), or relax with VERIFY_LEVEL=build in AGENTS.md/CLAUDE.md.`,
-          })
+          const parent = (await ctx.session.get({ sessionID: parentID }).catch(() => undefined)) as any
+          if (parent?.location?.directory !== ctx.location.directory) continue
+
+          const block = await gateAndCache(sessionID)
+          // Foreground children: no synthetic here — execute.after delivers
+          // the verdict by failing the parent's tool call. Background
+          // children have no pending tool call; the parent may already be
+          // idle, so wake it with a synthetic message (queues if busy).
+          if (block && backgroundLaunched.has(sessionID)) {
+            await ctx.session.synthetic({
+              sessionID: parentID,
+              text: `Background subagent ${sessionID} was BLOCKED by the powers verify gate:\n\n${block}\n\nRedispatch it with instructions to fix the above (test-first per the tdd skill), or relax with VERIFY_LEVEL=build in AGENTS.md/CLAUDE.md.`,
+            })
+          }
         } catch (err) {
-          console.error("[powers] background gate error (allowing):", err)
+          console.error("[powers] idle gate error (allowing):", err)
         }
       }
     })()
