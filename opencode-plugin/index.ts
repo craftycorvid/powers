@@ -155,7 +155,11 @@ function asObject(value: unknown): Record<string, any> {
   }
 }
 
-/** Spawn the verify gate in `dir`, feed it cwd JSON, return combined output. */
+/** Spawn the verify gate in `dir`, feed it cwd JSON, return combined output.
+ * A hung verify command must not stump the parent's tool loop forever: race
+ * the process against GATE_TIMEOUT, kill it, and fail open but loudly. */
+const GATE_TIMEOUT_MS = 10 * 60 * 1000
+
 async function runVerifyGate(dir: string): Promise<{ code: number; output: string }> {
   const proc = Bun.spawn(["bash", VERIFY_GATE], {
     cwd: dir,
@@ -168,10 +172,48 @@ async function runVerifyGate(dir: string): Promise<{ code: number; output: strin
 
   const stdoutPromise = new Response(proc.stdout).text()
   const stderrPromise = new Response(proc.stderr).text()
-  const code = await proc.exited
+  let timer: ReturnType<typeof setTimeout> | undefined
+  const timedOut = new Promise<true>((resolve) => {
+    timer = setTimeout(() => {
+      proc.kill()
+      resolve(true)
+    }, GATE_TIMEOUT_MS)
+  })
+  const hung = await Promise.race([proc.exited.then(() => false), timedOut])
+  if (timer) clearTimeout(timer)
+  if (hung) {
+    console.error(`[powers] verify-gate.sh in ${dir} exceeded ${GATE_TIMEOUT_MS / 1000}s and was killed (allowing)`)
+    return { code: -1, output: "verify gate timed out" }
+  }
   const [stdout, stderr] = await Promise.all([stdoutPromise, stderrPromise])
   const output = [stdout, stderr].filter(Boolean).join("\n").trim()
-  return { code, output }
+  return { code: await proc.exited, output }
+}
+
+/** Gate a child session: run verify-gate.sh in the directory it worked in.
+ * Returns the BLOCKED message, or null when the session passes. */
+async function gateSession(ctx: any, childID: string): Promise<string | null> {
+  // The child's working directory: its (possibly moved) session location.
+  let dir: string = ctx.location.directory
+  try {
+    const child = (await ctx.session.get({ sessionID: childID })) as any
+    const childDir = child?.location?.directory ?? child?.directory
+    if (childDir) dir = childDir
+  } catch (err) {
+    console.error(`[powers] session.get(${childID}) failed; gating fallback dir:`, err)
+  }
+
+  const { code, output } = await runVerifyGate(dir)
+  if (code === 2) {
+    const message = output || "verification failed"
+    return message.startsWith("BLOCKED") ? message : `BLOCKED: ${message}`
+  }
+  if (code !== 0) {
+    // Harness problem (bad script path, spawn failure, timeout): fail open,
+    // but make the failure loud.
+    console.error(`[powers] verify-gate.sh exited ${code} (not a block): ${output}`)
+  }
+  return null
 }
 
 // ---------------------------------------------------------------------------
@@ -183,6 +225,13 @@ export default Plugin.define({
 
   async setup(ctx) {
     const skills = loadSkills(PLUGIN_ROOT)
+    if (skills.length === 0) {
+      // The whole plugin is a no-op without skills — that must be loud, not
+      // silent. (Wrong root after a packaging change, unreadable dir, etc.)
+      console.error(
+        `[powers] no skills found under ${SKILLS_DIR} — skills, commands, and the verify gate were NOT registered. Check the plugin install.`,
+      )
+    }
     const byId = new Map(skills.map((s) => [s.id, s]))
 
     // --- (a) Skills -------------------------------------------------------
@@ -203,9 +252,15 @@ export default Plugin.define({
 
     // --- (b) Commands -----------------------------------------------------
     // /powers/approve switches to the plan agent, then injects the approve
-    // skill body. /powers/ship just injects the ship skill body.
+    // skill body. /powers/ship just injects the ship skill body. Any text the
+    // user typed with the invocation is appended after the skill body — an
+    // invocation with attached changes is NOT approval (approve skill says so).
+    const inject = (body: string, userText: string | undefined) =>
+      userText && userText.trim() ? `${body}\n\n${userText.trim()}` : body
+
     const approve = byId.get("approve")
     const ship = byId.get("ship")
+    const setup = byId.get("setup")
     await ctx.command.transform((editor) => {
       if (approve) {
         editor.add({
@@ -216,7 +271,7 @@ export default Plugin.define({
             await ctx.session.prompt({
               ...prompt,
               sessionID,
-              text: approve.content,
+              text: inject(approve.content, prompt.text),
               delivery,
             })
           },
@@ -230,7 +285,23 @@ export default Plugin.define({
             await ctx.session.prompt({
               ...prompt,
               sessionID,
-              text: ship.content,
+              text: inject(ship.content, prompt.text),
+              delivery,
+            })
+          },
+        })
+      }
+      // Claude Code exposes /powers:setup for every repo; OpenCode users need
+      // the same entry point (setup is otherwise model-invoked only).
+      if (setup) {
+        editor.add({
+          name: "powers/setup",
+          description: setup.description || undefined,
+          execute: async ({ sessionID, prompt, delivery }) => {
+            await ctx.session.prompt({
+              ...prompt,
+              sessionID,
+              text: inject(setup.content, prompt.text),
               delivery,
             })
           },
@@ -243,6 +314,15 @@ export default Plugin.define({
     // directory the child session worked in (its worktree, if it moved).
     // Exit 2 fails the parent's subagent call with the script's message —
     // the parent model sees it and can redispatch. Everything else passes.
+    //
+    // Foreground subagents are gated in execute.after (the result settles
+    // there and throwing fails the parent's tool call). Background children
+    // can't be gated that way — their launch call settles immediately — so
+    // they're tracked at launch and gated via session.status idle events,
+    // with the BLOCKED verdict delivered to the parent as a synthetic
+    // message (the parent is idle by then; the message re-activates it).
+    const pendingBackground = new Set<string>() // background: awaiting idle
+
     await ctx.tool.hook("execute.after", async (event) => {
       if (event.tool !== "subagent") return
       // Errored subagents surface their real error; don't mask it.
@@ -255,25 +335,15 @@ export default Plugin.define({
           result?.output?.sessionID ?? result?.metadata?.sessionID
         if (!childID) return
 
-        // The child's working directory: its (possibly moved) session location.
-        let dir: string = ctx.location.directory
-        try {
-          const child = (await ctx.session.get({ sessionID: childID })) as any
-          const childDir = child?.location?.directory ?? child?.directory
-          if (childDir) dir = childDir
-        } catch (err) {
-          console.error(`[powers] session.get(${childID}) failed; gating fallback dir:`, err)
+        // Background launches settle at launch: the child hasn't worked yet,
+        // so there is nothing to gate here. Track it for idle-time gating.
+        const input = asObject((event as any).input)
+        if (input?.background === true) {
+          pendingBackground.add(childID)
+          return
         }
 
-        const { code, output } = await runVerifyGate(dir)
-        if (code === 2) {
-          const message = output || "verification failed"
-          block = message.startsWith("BLOCKED") ? message : `BLOCKED: ${message}`
-        } else if (code !== 0) {
-          // Harness problem (bad script path, spawn failure, unexpected exit):
-          // fail open, but make the failure loud.
-          console.error(`[powers] verify-gate.sh exited ${code} (not a block): ${output}`)
-        }
+        block = await gateSession(ctx, childID)
       } catch (err) {
         // Fail open on gate-harness bugs; real verification failures use
         // exit 2 and are handled above.
@@ -282,5 +352,35 @@ export default Plugin.define({
 
       if (block) throw new Error(block)
     })
+
+    // Background children: gate when the child goes idle, tell the parent.
+    const controller = new AbortController()
+    void (async () => {
+      for await (const ev of ctx.event.subscribe({ signal: controller.signal })) {
+        try {
+          if ((ev as any).type !== "session.status") continue
+          const data = (ev as any).data ?? {}
+          if (data.status?.type !== "idle") continue
+          const childID = data.sessionID
+          if (!childID || !pendingBackground.has(childID)) continue
+          pendingBackground.delete(childID)
+
+          const block = await gateSession(ctx, childID)
+          if (!block) continue
+
+          const child = (await ctx.session.get({ sessionID: childID }).catch(() => undefined)) as any
+          const parentID = child?.parentID
+          if (!parentID) continue
+          await ctx.session.synthetic({
+            sessionID: parentID,
+            text: `Background subagent ${childID} was BLOCKED by the powers verify gate:\n\n${block}\n\nRedispatch it with instructions to fix the above (test-first per the tdd skill), or relax with VERIFY_LEVEL=build in AGENTS.md/CLAUDE.md.`,
+          })
+        } catch (err) {
+          console.error("[powers] background gate error (allowing):", err)
+        }
+      }
+    })()
+
+    return () => controller.abort()
   },
 })

@@ -21,8 +21,9 @@ adversarial review → hard verify gate.**
   off to the tdd bug flow. Adapted from [obra/superpowers](https://github.com/obra/superpowers) (MIT).
 - **`implementer` agent** — one task per dispatch, test-first, in an isolated
   worktree, commits before finishing. Stops and reports on spec ambiguity.
-- **`code-reviewer` agent** — read-only (Read/Grep/Glob, haiku), reviews a
-  diff against its spec for correctness, scope creep, and missing tests.
+- **`code-reviewer` agent** — read-only, small/cheap model (haiku in Claude
+  Code), reviews a diff against its spec for correctness, scope creep, and
+  missing tests.
 - **verify gate** — a `SubagentStop` hook (Claude Code) / subagent-completion
   hook (OpenCode). Blocks a finishing subagent if it changed source without
   tests (`VERIFY_LEVEL=tdd`) or if the repo's verify command fails.
@@ -55,14 +56,16 @@ Add the plugin:
 opencode plugin add github:craftycorvid/powers
 ```
 
-The plugin registers the skills, the `/powers/approve` and `/powers/ship`
-commands, and the verify gate from this repo's `skills/` and `scripts/`. The
-`implementer` and `code-reviewer` agents are installed as global files by
-`/powers:setup`, because OpenCode plugins cannot register agents themselves.
+The plugin registers the skills, the `/powers/approve`, `/powers/ship`, and
+`/powers/setup` commands, and the verify gate from this repo's `skills/` and
+`scripts/`. The `implementer` and `code-reviewer` agents are installed as
+global files by `/powers/setup`, because OpenCode plugins cannot register
+agents themselves.
 
 ## Per-repo rollout
 
-Run `/powers:setup` in the repo. It detects the project's test/build commands,
+Run `/powers:setup` (Claude Code) or `/powers/setup` (OpenCode) in the repo. It
+detects the project's test/build commands,
 asks which `VERIFY_LEVEL` you want (`tdd` strict / `build` relaxed), generates
 `CLAUDE.md` (Claude Code) and/or `AGENTS.md` (OpenCode) and `scripts/verify.sh`
 from the templates, runs verify.sh to prove it works, and commits them. If both
@@ -100,11 +103,13 @@ Same skills, same discipline, different harness plumbing:
   gate fails the parent's subagent call and the model can redispatch.
 - Skills and commands are registered by the plugin directly from the same
   `skills/*/SKILL.md` files; nothing is duplicated.
-- Commands are `/powers/approve` and `/powers/ship` (slash, not colon).
-- Agents install to `~/.config/opencode/agents/` via `/powers:setup`, since
+- Commands are `/powers/approve`, `/powers/ship`, and `/powers/setup`
+  (slash, not colon).
+- Agents install to `~/.config/opencode/agents/` via `/powers/setup`, since
   plugins cannot register agents.
-- The `implementer` manages its own git worktree and moves its session into it
-  (`session_move`), rather than relying on harness-level worktree isolation.
+- The `implementer` creates its own git worktree, moves its session into it
+  (`session_move`), and stays there — the gate inspects the worktree on
+  completion; the dispatcher merges and cleans up.
 
 ## How is this different from superpowers?
 

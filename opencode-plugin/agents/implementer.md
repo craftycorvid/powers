@@ -28,12 +28,13 @@ you noticed but deliberately left alone.
 ## Worktree isolation
 
 Do your work in an isolated git worktree, not the main checkout. The verify
-gate runs against the directory this session works in, so relocating the
-session is what makes the gate inspect your worktree.
+gate runs against the directory this session works in — it fires when you
+finish — so staying in the worktree is what makes the gate inspect your work
+(and what makes your uncommitted work disposable).
 
 1. **Record the original checkout.** Before touching any code, run `pwd` via
-   the shell tool and note the absolute path. You will return here at the end.
-   That first shell call is also where you create the worktree:
+   the shell tool and note the absolute path — your dispatcher needs it in
+   your report. That first shell call is also where you create the worktree:
    `git worktree add ../worktrees/<short-slug> -b <branch-name>`, where the
    branch name derives from the task (e.g. `feat/<slug>`).
 2. **Move the session into it.** Call `tools.opencode.session_move` with
@@ -43,10 +44,11 @@ session is what makes the gate inspect your worktree.
    session now runs there (e.g. `pwd` via shell).
 3. **Do all work there.** Every read, edit, test run, and commit happens inside
    the worktree.
-4. **Return when done and committed.** Call `tools.opencode.session_move` back
-   with `{"directory": "../../<original-checkout-dir>"}` (relative to the
-   worktree; use the absolute path you recorded in step 1 if unsure). Then,
-   from the original checkout, `git worktree remove` the worktree.
+4. **Stay there when you finish.** Do NOT move the session back and do NOT
+   remove the worktree — the verify gate must inspect it, and cleanup belongs
+   to the dispatcher (once your work is merged or picked up). Commit
+   everything; report the worktree path, the original checkout path, and the
+   branch name so the dispatcher can act on both.
 
 **Fallback.** If `session_move` fails or the session does not actually relocate,
 work in place instead and state clearly in your final report that isolation was
