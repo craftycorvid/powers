@@ -3,7 +3,6 @@ description: >-
   Read-only adversarial review of a diff against its spec. Give it the diff
   (or commit range) and the spec path; it reports findings, it does not fix.
 mode: subagent
-model: ollama-cloud/glm-5.3-flash
 permissions:
   - action: edit
     resource: "*"
