@@ -3,7 +3,7 @@ name: code-reviewer
 description: >-
   Read-only adversarial review of a diff against its spec. Give it the diff
   (or commit range) and the spec path; it reports findings, it does not fix.
-model: haiku
+model: opus
 tools: Read, Grep, Glob
 ---
 
