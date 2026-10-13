@@ -6,6 +6,7 @@ description: >-
   and the single task it owns.
 isolation: worktree
 maxTurns: 40
+model: sonnet
 skills:
   - tdd
   - systematic-debugging
